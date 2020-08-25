@@ -1,0 +1,253 @@
+/*
+  
+           (This only works on the Xbox Console Companion
+
+    -Features-
+    
+    - You can't be removed from parties. (OP!)
+    - The mute button has been repurposed to a kick button. (kick when you're not host)
+    - Party IPs can be seen by looking at a friend's profile (logs tab) (They must have you added back).
+    - You can see group post message requests (logs tab).
+    - You can see who's actually online/offline. (It shows friends online when they're appearing offline)
+
+    - COPY BELOW THIS MSG ---------------
+
+*/         
+
+
+  //   -script-  \\-
+
+import System;
+import System.Windows.Forms;
+import Fiddler;
+import Fiddler.WebFormats;
+
+
+
+var partyOwnership;
+var partyOwnership_hostname;
+var partyOwnership_version;
+var original_parameters;
+
+
+
+function JSONGetValue(key, json, startindex) {
+    var to_return = ""
+    var JSON_BRACE = -1;
+    var JSON_BROKE_AT = -1;
+    var JSON_BREAKPOINT = false;
+    var WAIT_FOR_COLON = false
+    var i = 0;
+    var char = ""
+    if (startindex > 0) {
+        JSON_BRACE = 0;
+        i = startindex
+    }
+    for (; i < json.length; i++) {
+        char = json[i]
+        JSON_BRACE += char == "{"
+        JSON_BRACE -= char == "}"
+        if (JSON_BRACE == -1) {
+            return ["", 0]
+        }
+        if (JSON_BRACE > -1) {
+            if (JSON_BREAKPOINT) {
+                if (WAIT_FOR_COLON) {
+                    if (char == ":") {
+                        WAIT_FOR_COLON = false;
+                    }
+                } else {
+                    // Collect
+                    if (JSON_BRACE == JSON_BROKE_AT) {
+                        if (char == "}" || char == ",") {
+                            if (char == "}") {
+                                to_return += "}";
+                                i++
+                            }
+                            return [to_return, i]
+                        } else {
+                            to_return += char
+                        }
+                    } else {
+                        to_return += char
+                    }
+                }
+            } else if (
+                to_return == key && char == "\""
+                ||
+                to_return == key && char == ":"
+            ) {
+                to_return = "";
+                WAIT_FOR_COLON = char != ":";
+                JSON_BREAKPOINT = true;
+                JSON_BROKE_AT = parseInt(JSON_BRACE)
+            } else {
+                if (char == "\"" || char == ",") {
+                    to_return = ""
+                } else {
+                    to_return += char
+                }
+            }
+        } else if (JSON_BREAKPOINT) {
+            return [to_return, i]
+        }
+    }
+    FiddlerObject.log("Probably couldn't find the key, or EOF")
+    return false;
+}
+
+function JSONGetKeys(json) {
+    var to_return = []
+    var JSON_BRACE = -1;
+    var JSON_BREAKPOINT = false;
+    var char = "";
+    var name_build = ""
+    for (var i = 0; i < json.length; i++) {
+        char = json[i]
+        JSON_BRACE += char == "{"
+        JSON_BRACE -= char == "}"
+        if (JSON_BRACE > -1) {
+            if (JSON_BREAKPOINT) {
+                if (JSON_BRACE == 0) {
+                    if (char == ",") {
+                        JSON_BREAKPOINT = false
+                    }
+                }
+            } else {
+                if (char != "\"" && char != ":" && char != "{") {
+                    name_build += char
+                } else if (char == ":") {
+                    to_return.push(String(name_build))
+                    name_build = ""
+                    JSON_BREAKPOINT = true
+                }
+            }
+        }
+        if (JSON_BRACE == -1) {
+            return to_return
+        }
+    }
+    return false
+}
+
+function decodeIP(rawBytes) {
+    var is_safe = true
+    var fail_reason = -1
+    var secureDeviceAddress
+    try {
+        secureDeviceAddress = Convert.FromBase64String(rawBytes)
+    } catch(Error) {
+        return "(base64 decode failure)"
+    }
+    if (is_safe) {
+        if (secureDeviceAddress[0] == 0x01 && secureDeviceAddress[1] == 0x00) {
+            var last4 = [0, 0, 0, 0]
+            var arrayIndex = 0
+            for (var char = 0; char < secureDeviceAddress.length; char++) {
+            arrayIndex++
+            last4.shift()
+            last4.push(secureDeviceAddress[char])
+            if (last4[0] == 32 && last4[1] == 1 && last4[2] == 0 && last4[3] == 0) break;
+        }
+        if (last4[0] != 32 || last4[1] != 1 || last4[2] != 0 || last4[3] != 0) return "(Hidden)";
+        var ipv4 = ""
+        var ipvp = 0
+        for (var x = 0; x < 4; x++) {
+            ipv4 += "." + String(0xff - secureDeviceAddress[(arrayIndex + 8) + x])
+        }
+        for (var x = 0; x < 2; x++) {
+            ipvp += (0xff - secureDeviceAddress[(arrayIndex + 7) - x]) * (1 + (0xff * x))
+        }
+        ipv4 = ipv4.replace(".", "", 1)
+        return ipv4 + " : " + String(ipvp)
+    } else {
+        return "(invalid secureDeviceAddress)"
+    }
+}
+return "An unknown exception occurred."
+}
+
+function inspect_party(inputJSON, is_group) { 
+    if (inputJSON.length && inputJSON.indexOf("{") == 0) {
+        var party_members = JSONGetValue("members", inputJSON, 0)
+        if (party_members != false) {
+            FiddlerObject.log("Getting dat good stuff...") //change the message if you want
+            party_members = party_members[0]
+            var to_print = "\r\n"
+            to_print += "= = = Xbox Live "
+            if (is_group) to_print += "Group"; else to_print += "Party"; 
+            to_print += " = = ="
+            var member_keys = JSONGetKeys(party_members)
+            var member = []
+            var quickindex = 1;
+            for (var i = 0; i < member_keys.length; i++) {
+                member = JSONGetValue(member_keys[i], party_members, quickindex)
+                quickindex = member[1]
+                to_print += "\r\n" + String(i) + " | " + member[0].split("\"gamertag\":\"")[1].split("\"")[0]
+                if (!is_group) if (member[0].indexOf("\"secureDeviceAddress\":\"") > -1) to_print += " | " + decodeIP(member[0].split("\"secureDeviceAddress\":\"")[1].split("\"")[0]); else to_print += " | (mobile Device / unavailable)";;
+                if (member[0].indexOf("\"description\":{\"text\":\"") > -1) to_print += " | Request Message: " + member[0].split("\"description\":{\"text\":\"")[1].split("\"")[0];
+            }
+            to_print += "\r\n= = = = = = = = = = = = ="
+            FiddlerObject.log(to_print)
+        } else {
+            FiddlerObject.log("Failed to find key")
+        }
+    }
+    return inputJSON;
+}
+
+class Handlers
+{
+static function OnBeforeRequest(oSession) {
+    var oReq = System.Text.Encoding.UTF8.GetString(oSession.requestBodyBytes);
+    if (oSession.PathAndQuery.indexOf("/serviceconfigs/") > -1) {
+        if (oReq.indexOf("\"constants\"") > -1) {
+            partyOwnership = oSession.PathAndQuery
+            partyOwnership_hostname = oSession.host
+            partyOwnership_version = oSession.oRequest["x-xbl-contract-version"]
+            FiddlerObject.log(partyOwnership_version)
+        }
+    }
+    if (oSession.PathAndQuery.indexOf("/people/mute") > -1) { // Repurposed remove button
+        if (partyOwnership != undefined) {
+            var to_kick = oReq.split(": \"")[1].split("\"")[0]
+            oSession.PathAndQuery = partyOwnership
+            oSession.host = partyOwnership_hostname
+            oSession.oRequest["x-xbl-contract-version"] = partyOwnership_version
+            oSession.oRequest["If-Match"] = "*"
+            oReq = "{\"properties\":{\"custom\":{\"kickusers\":{\"" + to_kick + "\":\"kick\"}}}}"
+        }
+    }
+    oSession.utilSetRequestBody(oReq)
+}
+
+static function OnBeforeResponse(oSession) {
+    var oReq = System.Text.Encoding.UTF8.GetString(oSession.requestBodyBytes);
+    var oRes = System.Text.Encoding.UTF8.GetString(oSession.responseBodyBytes);
+    if (oSession.PathAndQuery.indexOf("/sessions?") == -1) {
+        if (oSession.PathAndQuery.indexOf("/serviceconfigs/") > -1 && oSession.PathAndQuery.indexOf("/chat/") > -1) { // Is a party
+            oRes = inspect_party(oRes, false);
+        } else if (oSession.PathAndQuery.indexOf("/handles/") > -1 && oSession.PathAndQuery.indexOf("/session") > -1) { // Is a group
+            oRes = inspect_party(oRes, true);
+        }  else if (oSession.PathAndQuery.indexOf("/decoration/") > -1) {
+            oRes = oRes.replace("Offline", "Online")
+        }
+    }
+    if (oRes.indexOf("\"kickusers\":{\"") > -1) {
+        var removeKick = oRes.split("\"kickusers\":{\"")[1].split("}")[0]
+        oRes = oRes.Replace("\"kickusers\":{\"" + removeKick + "}", "")
+        oSession.utilSetResponseBody(oRes)
+    }
+    var limiter = 0
+    while (oRes.IndexOf(",}") > -1 && limiter < 100) {
+        oRes = oRes.Replace(",}", "}")
+        limiter += 1
+    }
+    oSession.utilSetResponseBody(oRes)
+}
+
+static function Main() {
+    var today: Date = new Date();
+    FiddlerObject.StatusText = " Xbox Party additions was loaded at: " + today;
+}
+}
