@@ -1,21 +1,7 @@
 /*
   
            (This only works on the Xbox Console Companion)
-
-               -instructions-
-     
-    - Install & open Fiddler4. (using this link  https://www.telerik.com/download/fiddler)
-    - Enable Xbox related applications in WinConfig dialog. (If anything pops up here press no)
-    - Enable HTTPS decryption (Tools > Options > HTTPS > Decrypt HTTPS traffic). Accept all prompts.
-    - Copy this script, open the FiddlerScript tab, CTRL + A, click anywhere in the box, then CTRL + V.
-    - Save Script (top left).
-    - Enable Decode in the toolbar.
-    - Disable Stream in the toolbar.
-    - Go to logs
-    
-
-   
-
+            
                  -Features-
     
     - You can't be removed from parties. (OP!)
